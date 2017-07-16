@@ -558,24 +558,6 @@ if __name__ == "__main__":
             if count % 100 == 0:
                 break
             count += 1    
-
-       
-        
-    if False:
-
-        
-        # Modeling Classifier Chains for Multi-label Classification
-
-
-#        sums_across_labels = y_train_sparse.sum(axis=1)
-#        noise = sums_across_labels > 2
-#        noise = noise.transpose()
-#        noise = noise[:].tolist()[0]
-#        sums_across_labels[sums_across_labels == 1].shape
-        
-        
-        
-
            
         
  
