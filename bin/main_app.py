@@ -463,7 +463,7 @@ if __name__ == "__main__":
     # prepr.save_users_products_eval_set()
     
     # prepr.load_reduced_users_products_count()
-    # prepr.users_for_train_and_test(train_sample=50000)
+    prepr.users_for_train_and_test(train_sample=50000)
     # prepr.generate_X_train()
     # prepr.generate_y_train()
     X_train = load_pickle(prepr.data_sources["X_train"])
@@ -491,9 +491,47 @@ if __name__ == "__main__":
     X_train_sparse = load_pickle(prepr.data_sources["X_train_sparse"])
     y_train_sparse = load_pickle(prepr.data_sources["y_train_sparse"])    
     
+    X_train_sparse_csr = X_train_sparse.tocsr()
+    y_train_sparse_csr = y_train_sparse.tocsr()
+
+    classifier = ClassifierChain(classifier=linear_model.SGDClassifier(penalty="l1",n_jobs=-1),
+                                 require_dense = [False, True])
+    classifier.fit(X_train_sparse_csr, y_train_sparse_csr)
+    
+    
+    # predict
+    predictions = classifier.predict(X_test)
+    
+    
+    users_for_test = np.array(prepr.users_for_test[:1000])
+    users_products_count_rdcd = load_pickle(prepr.data_sources["users_products_count_rdcd"])
+    X_test = users_products_count_rdcd.loc[(users_products_count_rdcd['eval_set'] == 'train') & users_products_count_rdcd['user_id'].isin(users_for_test)]
+    pickle.dump(X_test, open("../pickles/X_test.p", "wb"))
+    y_test = users_products_count_rdcd.loc[(users_products_count_rdcd['eval_set'] == 'test') & users_products_count_rdcd['user_id'].isin(users_for_test)]
+    pickle.dump(y_test, open("../pickles/y_test.p", "wb"))
+
+
+    X_test_users =  np.unique(X_test["user_id"])
+    X_train_products = np.unique(X_train["product_id"])
     
 
-        
+    X_test_users_mapping = dict(zip(X_test_users, range(len(X_test_users))))
+    X_train_products_mapping = dict(zip(X_train_products, range(len(X_train_products))))
+    
+    X_test_users_mapped = X_test["user_id"].map(X_test_users_mapping) 
+    X_train_products_mapped = X_test["product_id"].map(X_train_products_mapping)
+    X_test_count = X_test["count"]
+    
+    X_train_products_mapped = X_train_products_mapped.fillna(value=5525)
+    X_train_products_mapped = X_train_products_mapped.astype("int64")
+
+    
+    
+    X_test_sparse = csc_matrix((X_test_count,(X_test_users_mapped,X_train_products_mapped)),
+                                           shape=(len(X_test_users_mapping), len(X_train_products_mapping)))
+    predictions = classifier.predict(X_test_sparse)
+    pickle.dump(predictions, open("../pickles/predictions.p", "wb"))
+    pickle.dump(classifier, open("../pickles/classifier.p", "wb"))
     if False:
         users_products_dict = load_pickle(prepr.data_sources["users_products_dict"])
         users1 = load_pickle("similiarity_by_users_1_10000.p")
@@ -538,12 +576,7 @@ if __name__ == "__main__":
         
         
 
-        X_train_sparse_csr = X_train_sparse.tocsr()
-        y_train_sparse_csr = y_train_sparse.tocsr()
-
-        classifier = ClassifierChain(classifier=linear_model.SGDClassifier(penalty="l1",n_jobs=-1),
-                                     require_dense = [False, True])
-        classifier.fit(X_train_sparse_csr, y_train_sparse_csr)            
+           
         
  
 
