@@ -85,9 +85,14 @@ class Preprocessing(object):
                               "users_products_count": "users_products_count.p",
                               "X_train_sparse": "X_train_sparse.p",
                               "y_train_sparse": "y_train_sparse.p",
+                              "X_test_sparse": "X_test_sparse.p",
+                              "y_test_sparse": "y_test_sparse.p",
                               "users_products_count_rdcd": "users_products_count_rdcd.p",
                               "X_train": "X_train.p",
-                              "y_train": "y_train.p"}
+                              "y_train": "y_train.p",
+                              "X_test": "X_test.p",
+                              "y_test": "y_test.p",
+                              "predictions": "predictions.p"}
     
     
     def save_goods(self):
@@ -394,55 +399,70 @@ class Preprocessing(object):
         self.users_for_test = users_for_test
         
 
-    def transform_to_sparse(self, subset, eval_set):
+    def transform_to_sparse(self, subset, eval_set, users_mapping, products_mapping):
+        
+        subset_users_mapped = subset["user_id"].map(users_mapping) 
+        subset_products_mapped = subset["product_id"].map(products_mapping)
+        
+        if "X" in eval_set:
+            subset_count = subset["count"]
+            pickle_name = "{}_sparse.p".format(eval_set)
+        elif "y" in eval_set:
+            subset_count = pd.Series([1]*len(subset["count"]))
+            pickle_name = "{}_sparse.p".format(eval_set)                        
+    
+            
+        subset_sparse = csc_matrix((subset_count,(subset_users_mapped,subset_products_mapped)),
+                                           shape=(len(users_mapping), len(products_mapping)))
+        pickle.dump(subset_sparse, open("../pickles/{}".format(pickle_name), "wb"))
+
+        
+
+    def generate_train(self):
+        """
+        Generate X train sparse matrix [users_count x products_count(all history except last one order)]
+        values are counts for products bought by users
+        and
+        y train sparse matrix [users_count x products_count(last one order)]
+        values ones for products which were bought at last order
+        """
+        if not hasattr(self, 'users_products_count_rdcd'):
+            self.users_products_count_rdcd = load_pickle(prepr.data_sources["users_products_count_rdcd"])
+        X_train = self.users_products_count_rdcd.loc[(self.users_products_count_rdcd['eval_set'] == 'train') & self.users_products_count_rdcd['user_id'].isin(self.users_for_train)]
+        y_train = self.users_products_count_rdcd.loc[(self.users_products_count_rdcd['eval_set'] == 'test') & self.users_products_count_rdcd['user_id'].isin(self.users_for_train)]
+        pickle.dump(X_train, open("../pickles/X_train.p", "wb"))
+        pickle.dump(y_train, open("../pickles/y_train.p", "wb"))
+        
+
+        
+        
+    def generate_test(self):
+        """
+        Generate X test sparse matrix [users_count x products_count(last one order)]
+        values ones for products which were bought at last order
+        and
+        y test sparse matrix [users_count x products_count(last one order)]
+        values ones for products which were bought at last order
+        """
+        if not hasattr(self, 'users_products_count_rdcd'):
+            self.users_products_count_rdcd = load_pickle(prepr.data_sources["users_products_count_rdcd"])
+        X_train = self.users_products_count_rdcd.loc[(self.users_products_count_rdcd['eval_set'] == 'train') & self.users_products_count_rdcd['user_id'].isin(self.users_for_test)]
+        y_train = self.users_products_count_rdcd.loc[(self.users_products_count_rdcd['eval_set'] == 'test') & self.users_products_count_rdcd['user_id'].isin(self.users_for_test)]
+        pickle.dump(X_train, open("../pickles/X_test.p", "wb"))
+        pickle.dump(y_train, open("../pickles/y_test.p", "wb"))
+        
+    def mappings(self, subset):
         subset_users =  np.unique(subset["user_id"])
         subset_products = np.unique(subset["product_id"])
         
 
         subset_users_mapping = dict(zip(subset_users, range(len(subset_users))))
         subset_products_mapping = dict(zip(subset_products, range(len(subset_products))))
+        return [subset_users_mapping, subset_products_mapping]       
         
-        
-        subset_users_mapped = subset["user_id"].map(subset_users_mapping) 
-        subset_products_mapped = subset["product_id"].map(subset_products_mapping)
-        if eval_set == "train":
-            subset_count = subset["count"]
-            pickle_name = "X_train_sparse.p"
-        elif eval_set == "test":
-            subset_count = pd.Series([1]*len(subset["count"]))
-            pickle_name = "y_train_sparse.p"
-            
-        subset_sparse = csc_matrix((subset_count,(subset_users_mapped,subset_products_mapped)),
-                                           shape=(len(subset_users_mapping), len(subset_products_mapping)))
-        pickle.dump(subset_sparse, open("../pickles/{}".format(pickle_name), "wb"))
-
-        
-
-    def generate_X_train(self):
-        """
-        Generate X_train sparse matrix [users_count x products_count(all history except last one order)]
-        values are counts for products bought by users 
-        """
-        if not hasattr(self, 'users_products_count_rdcd'):
-            self.users_products_count_rdcd = load_pickle(prepr.data_sources["users_products_count_rdcd"])
-        X_train = self.users_products_count_rdcd.loc[(self.users_products_count_rdcd['eval_set'] == 'train') & self.users_products_count_rdcd['user_id'].isin(self.users_for_train)]
-        pickle.dump(X_train, open("../pickles/X_train.p", "wb"))
-        
-
-        
-        
-    def generate_y_train(self):
-        """
-        Generate y_train sparse matrix [users_count x products_count(last one order)]
-        values ones for products which were bought at last order
-        """
-        if not hasattr(self, 'users_products_count_rdcd'):
-            self.users_products_count_rdcd = load_pickle(prepr.data_sources["users_products_count_rdcd"])
-        y_train = self.users_products_count_rdcd.loc[(self.users_products_count_rdcd['eval_set'] == 'test') & self.users_products_count_rdcd['user_id'].isin(self.users_for_train)]
-        pickle.dump(y_train, open("../pickles/y_train.p", "wb"))
         
                 
-    
+
                   
     
 if __name__ == "__main__":
@@ -463,13 +483,12 @@ if __name__ == "__main__":
     # prepr.save_users_products_eval_set()
     
     # prepr.load_reduced_users_products_count()
-    prepr.users_for_train_and_test(train_sample=50000)
-    # prepr.generate_X_train()
-    # prepr.generate_y_train()
+    # prepr.users_for_train_and_test(train_sample=50000)
+    # prepr.generate_train()
+    # prepr.generate_test()
     X_train = load_pickle(prepr.data_sources["X_train"])
     y_train = load_pickle(prepr.data_sources["y_train"])
-    # prepr.transform_to_sparse(X_train, "train")
-    # prepr.transform_to_sparse(y_train, "test")
+
         
  
     
@@ -486,52 +505,39 @@ if __name__ == "__main__":
 
     X_train = X_train.loc[~X_train['user_id'].isin(X_train_users_set)]
     y_train = y_train.loc[~y_train['user_id'].isin(X_train_users_set)]
-    prepr.transform_to_sparse(X_train, "train")
-    prepr.transform_to_sparse(y_train, "test")    
+    
+    [X_train_users_mapping, X_train_products_mapping] = prepr.mappings(X_train)
+    [y_train_users_mapping, y_train_products_mapping] = prepr.mappings(y_train)
+    
+    prepr.transform_to_sparse(X_train, "X_train", X_train_users_mapping, X_train_products_mapping)
+    prepr.transform_to_sparse(y_train, "y_train", y_train_users_mapping, y_train_products_mapping)
+    
     X_train_sparse = load_pickle(prepr.data_sources["X_train_sparse"])
     y_train_sparse = load_pickle(prepr.data_sources["y_train_sparse"])    
-    
-    X_train_sparse_csr = X_train_sparse.tocsr()
-    y_train_sparse_csr = y_train_sparse.tocsr()
 
-    classifier = ClassifierChain(classifier=linear_model.SGDClassifier(penalty="l1",n_jobs=-1),
-                                 require_dense = [False, True])
-    classifier.fit(X_train_sparse_csr, y_train_sparse_csr)
+#
+#    classifier = ClassifierChain(classifier=linear_model.SGDClassifier(penalty="l1",n_jobs=-1),
+#                                 require_dense = [False, True])
+#    classifier.fit(X_train_sparse, y_train_sparse)
     
-    
-    # predict
-    predictions = classifier.predict(X_test)
-    
-    
-    users_for_test = np.array(prepr.users_for_test[:1000])
-    users_products_count_rdcd = load_pickle(prepr.data_sources["users_products_count_rdcd"])
-    X_test = users_products_count_rdcd.loc[(users_products_count_rdcd['eval_set'] == 'train') & users_products_count_rdcd['user_id'].isin(users_for_test)]
-    pickle.dump(X_test, open("../pickles/X_test.p", "wb"))
-    y_test = users_products_count_rdcd.loc[(users_products_count_rdcd['eval_set'] == 'test') & users_products_count_rdcd['user_id'].isin(users_for_test)]
-    pickle.dump(y_test, open("../pickles/y_test.p", "wb"))
-
-
-    X_test_users =  np.unique(X_test["user_id"])
-    X_train_products = np.unique(X_train["product_id"])
     
 
-    X_test_users_mapping = dict(zip(X_test_users, range(len(X_test_users))))
-    X_train_products_mapping = dict(zip(X_train_products, range(len(X_train_products))))
-    
-    X_test_users_mapped = X_test["user_id"].map(X_test_users_mapping) 
-    X_train_products_mapped = X_test["product_id"].map(X_train_products_mapping)
-    X_test_count = X_test["count"]
-    
-    X_train_products_mapped = X_train_products_mapped.fillna(value=5525)
-    X_train_products_mapped = X_train_products_mapped.astype("int64")
+    X_test = load_pickle(prepr.data_sources["X_test"])
+    X_test_users = np.unique(X_test["user_id"])
+    X_test_users_subset = random.sample(list(X_test_users), k=1000)
+    X_test = X_test[X_test["user_id"].isin(X_test_users_subset)]
+    [X_test_users_mapping, X_test_products_mapping] = prepr.mappings(X_test)
+    prepr.transform_to_sparse(X_test, "X_test", X_test_users_mapping, X_train_products_mapping)
+    X_test_sparse = load_pickle(prepr.data_sources["X_test_sparse"])    
 
-    
-    
-    X_test_sparse = csc_matrix((X_test_count,(X_test_users_mapped,X_train_products_mapped)),
-                                           shape=(len(X_test_users_mapping), len(X_train_products_mapping)))
-    predictions = classifier.predict(X_test_sparse)
-    pickle.dump(predictions, open("../pickles/predictions.p", "wb"))
-    pickle.dump(classifier, open("../pickles/classifier.p", "wb"))
+
+#    predictions = classifier.predict(X_test_sparse)
+#    pickle.dump(predictions, open("../pickles/predictions.p", "wb"))
+
+
+
+
+
     if False:
         users_products_dict = load_pickle(prepr.data_sources["users_products_dict"])
         users1 = load_pickle("similiarity_by_users_1_10000.p")
